@@ -130,9 +130,9 @@
 </div>
 
 <script>
-    // --- REPLACE THESE WITH YOUR KEYS FROM SUPABASE ---
-    const SUPABASE_URL = https://ntxcsekmqrnqcuitxkqp.supabase.co;
-    const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50eGNzZWttcXJucWN1aXR4a3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjE2ODcsImV4cCI6MjA3OTgzNzY4N30.2LXyFiA7Pd3YKPlol4iRhDkwc4platQGkRFp--Yx04Y;
+    // --- CHECK THESE CAREFULLY ---
+    const SUPABASE_URL = 'https://ntxcsekmqrnqcuitxkqp.supabase.co'; // Make sure no spaces at start/end
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50eGNzZWttcXJucWN1aXR4a3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjE2ODcsImV4cCI6MjA3OTgzNzY4N30.2LXyFiA7Pd3YKPlol4iRhDkwc4platQGkRFp--Yx04Y'; // Make sure no spaces at start/end
     // --------------------------------------------------
     
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -140,128 +140,107 @@
     const regBtn = document.getElementById('regBtn');
 
     async function checkAndRegister() {
+        console.log("Button clicked..."); // Log to console
         const name = document.getElementById('name').value.trim();
         const mobile = document.getElementById('mobile').value.trim();
         
         if(!name || mobile.length < 10) { 
-            msg.innerText = "Please enter valid name and 10-digit mobile."; 
+            alert("Error: Please enter a valid name and 10-digit mobile number.");
             return; 
         }
 
         msg.innerText = "Checking availability...";
-        regBtn.disabled = true; // Prevent double clicks
+        regBtn.disabled = true; 
 
-        // Check 24-hour rule
-        const { data: history, error } = await supabase
+        // 1. CHECK HISTORY
+        const { data: history, error: selectError } = await supabase
             .from('loyalty_entries')
             .select('created_at')
             .eq('mobile', mobile)
             .order('created_at', { ascending: false })
             .limit(1);
 
-        if (error) { 
-            msg.innerText = "Connection error. Refresh and try again."; 
-            regBtn.disabled = false; return; 
+        // DEBUG: Catch connection errors immediately
+        if (selectError) { 
+            console.error("Select Error:", selectError);
+            alert("Database Error (Checking History): " + selectError.message);
+            msg.innerText = "Connection failed. Check API Keys."; 
+            regBtn.disabled = false; 
+            return; 
         }
 
-        if (history.length > 0) {
+        if (history && history.length > 0) {
             const lastPlayed = new Date(history[0].created_at);
             const diffHours = (new Date() - lastPlayed) / 36e5; 
             if (diffHours < 24) {
-                msg.innerText = `Try again after ${Math.ceil(24 - diffHours)} hours.`;
-                regBtn.disabled = false; return;
+                alert(`You already played! Try again after ${Math.ceil(24 - diffHours)} hours.`);
+                msg.innerText = "Already played today.";
+                regBtn.disabled = false; 
+                return;
             }
         }
 
-        // Generate Discount
+        // 2. GENERATE AND SAVE
         const discount = Math.floor(Math.random() * (20 - 10 + 1)) + 10;
+        console.log("Attempting to save:", name, mobile, discount);
 
-        // Save to DB
         const { error: insertError } = await supabase
             .from('loyalty_entries')
             .insert([{ name: name, mobile: mobile, discount_amount: discount }]);
 
+        // DEBUG: Catch save errors
         if (insertError) {
-            msg.innerText = "Save failed. Try again.";
+            console.error("Insert Error:", insertError);
+            alert("Database Error (Saving): " + insertError.message + "\n\nHint: Did you run the SQL Policy?");
+            msg.innerText = "Save failed: " + insertError.message;
             regBtn.disabled = false;
         } else {
-            // SUCCESS: Switch screens and initialize canvas
+            // SUCCESS
+            console.log("Save successful!");
             document.getElementById('login-form').style.display = 'none';
             document.getElementById('scratch-section').style.display = 'block';
             document.getElementById('prize-amount').innerText = "₹" + discount + " OFF";
-            
-            // Initialize the scratch canvas mechanics
             initScratchCard();
         }
     }
 
-    // --- NEW CANVAS SCRATCH LOGIC ---
+    // --- CANVAS SCRATCH LOGIC (Keep this same as before) ---
     function initScratchCard() {
         const canvas = document.getElementById('scratch-canvas');
         const ctx = canvas.getContext('2d');
         let isDrawing = false;
 
-        // 1. Fill canvas with gray overlay text
-        ctx.fillStyle = '#95a5a6'; // Gray color
+        ctx.fillStyle = '#95a5a6'; 
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Add text to the gray top layer
         ctx.font = "bold 20px Arial";
         ctx.fillStyle = "#ecf0f1";
         ctx.textAlign = "center";
         ctx.fillText("SCRATCH HERE!", canvas.width/2, canvas.height/2 + 8);
-
-        // 2. Define the erasing function (The magic part)
-        // 'destination-out' makes whatever we draw transparent, revealing what's under
         ctx.globalCompositeOperation = 'destination-out';
 
         function scratch(x, y) {
              ctx.beginPath();
-             // Draw a circle where the finger/mouse is. Increase radius for bigger brush.
              ctx.arc(x, y, 25, 0, Math.PI * 2, false); 
              ctx.fill();
         }
 
-        // 3. Helper to get correct coordinates on mobile or desktop
         function getPosition(e) {
              const rect = canvas.getBoundingClientRect();
-             let clientX, clientY;
-             
-             if(e.touches && e.touches.length > 0) {
-                 // It's a touch event
-                 clientX = e.touches[0].clientX;
-                 clientY = e.touches[0].clientY;
-             } else {
-                 // It's a mouse event
-                 clientX = e.clientX;
-                 clientY = e.clientY;
-             }
-             
-             return {
-                 x: clientX - rect.left,
-                 y: clientY - rect.top
-             };
+             let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+             let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+             return { x: clientX - rect.left, y: clientY - rect.top };
         }
 
-        // 4. Event Listeners for Mouse (Desktop)
         canvas.addEventListener('mousedown', (e) => { isDrawing = true; const pos = getPosition(e); scratch(pos.x, pos.y); });
         canvas.addEventListener('mousemove', (e) => { if (isDrawing) { const pos = getPosition(e); scratch(pos.x, pos.y); } });
         canvas.addEventListener('mouseup', () => isDrawing = false);
-        canvas.addEventListener('mouseleave', () => isDrawing = false);
-
-        // 5. Event Listeners for Touch (Mobile) - IMPORTANT!
-        // We preventDefault to stop the phone screen from dragging around while scratching
-        canvas.addEventListener('touchstart', (e) => { 
-            e.preventDefault(); isDrawing = true; const pos = getPosition(e); scratch(pos.x, pos.y); 
-        }, { passive: false });
         
-        canvas.addEventListener('touchmove', (e) => { 
-            e.preventDefault(); if (isDrawing) { const pos = getPosition(e); scratch(pos.x, pos.y); } 
-        }, { passive: false });
-        
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; const pos = getPosition(e); scratch(pos.x, pos.y); }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (isDrawing) { const pos = getPosition(e); scratch(pos.x, pos.y); } }, { passive: false });
         canvas.addEventListener('touchend', () => isDrawing = false);
     }
 </script>
-
 </body>
+
 </html>
