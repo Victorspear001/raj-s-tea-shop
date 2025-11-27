@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Raj's Tea & Snacks Shop - Win Discount</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* Mobile-first base styles */
+        body { 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background-color: #fdf6e3; 
+            text-align: center; 
+            padding: 15px; 
+            margin: 0;
+            /* Prevent elastic scrolling on iOS */
+            overflow-x: hidden;
+            overscroll-behavior: none;
+        }
+        .container { 
+            max-width: 100%; /* Use full width on small phones */
+            width: 400px; /* Cap width on tablets/desktops */
+            margin: 10px auto; 
+            background: white; 
+            padding: 25px 20px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+            box-sizing: border-box; /* Keeps padding inside width */
+        }
+        h1 { color: #d35400; font-size: 22px; margin-bottom: 5px; }
+        h2 { color: #555; font-size: 16px; margin-top: 0; font-weight: normal; }
+        
+        /* Larger inputs for easy tapping */
+        input { 
+            width: 100%; 
+            padding: 14px; /* Larger padding for touch */
+            margin: 10px 0; 
+            border: 1px solid #ccc; 
+            border-radius: 8px; 
+            box-sizing: border-box;
+            font-size: 16px; /* Prevents iOS zoom on focus */
+        }
+        /* Larger button for easy tapping */
+        button { 
+            background-color: #d35400; 
+            color: white; 
+            padding: 14px 25px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 18px; 
+            font-weight: bold;
+            width: 100%; 
+            margin-top: 10px;
+            -webkit-tap-highlight-color: transparent; /* Remove mobile tap flicker */
+        }
+        button:active { background-color: #a04000; transform: scale(0.98); }
+        
+        .error { color: #e74c3c; font-size: 14px; margin-top: 15px; font-weight: bold;}
+
+        /* --- NEW SCRATCH CARD STYLES --- */
+        #scratch-section { display: none; margin-top: 25px; }
+        
+        /* The container holding layers together */
+        .scratch-container {
+            position: relative;
+            width: 300px;
+            height: 150px;
+            margin: 20px auto;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            /* Prevent page scrolling when dragging on the card on mobile */
+            touch-action: none; 
+        }
+
+        /* The layer underneath (The Prize) */
+        .prize-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1; /* Lower layer */
+        }
+        #prize-amount { font-size: 32px; font-weight: 800; text-shadow: 1px 1px 3px rgba(0,0,0,0.3); }
+        
+        /* The Canvas (The Gray Scratch Top) */
+        #scratch-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 2; /* Top layer */
+            cursor: crosshair;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Raj's Tea & Snacks Shop</h1>
+    <h2>Loyalty & Rewards</h2>
+    <p style="color:#666;">Enter details to win ₹10 - ₹20 discount!</p>
+    
+    <div id="login-form">
+        <input type="text" id="name" placeholder="Your Name (e.g., Rahul)" required>
+        <input type="tel" id="mobile" placeholder="Mobile Number" required maxlength="10">
+        <button id="regBtn" onclick="checkAndRegister()">Register & Play</button>
+        <p id="message" class="error"></p>
+    </div>
+
+    <div id="scratch-section">
+        <h3 style="color: #2c3e50;">Rub the card below!</h3>
+        
+        <div class="scratch-container" id="js-container">
+             <canvas id="scratch-canvas" width="300" height="150"></canvas>
+
+             <div class="prize-layer">
+                 <span style="font-size: 14px; opacity: 0.8;">YOU WON</span>
+                 <span id="prize-amount">Loading...</span>
+             </div>
+        </div>
+        
+        <p style="margin-top:20px; color: #7f8c8d; font-size: 14px;">Show this screen to the cashier.</p>
+    </div>
+</div>
+
+<script>
+    // --- REPLACE THESE WITH YOUR KEYS FROM SUPABASE ---
+    const SUPABASE_URL = https://ntxcsekmqrnqcuitxkqp.supabase.co;
+    const SUPABASE_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50eGNzZWttcXJucWN1aXR4a3FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjE2ODcsImV4cCI6MjA3OTgzNzY4N30.2LXyFiA7Pd3YKPlol4iRhDkwc4platQGkRFp--Yx04Y;
+    // --------------------------------------------------
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const msg = document.getElementById('message');
+    const regBtn = document.getElementById('regBtn');
+
+    async function checkAndRegister() {
+        const name = document.getElementById('name').value.trim();
+        const mobile = document.getElementById('mobile').value.trim();
+        
+        if(!name || mobile.length < 10) { 
+            msg.innerText = "Please enter valid name and 10-digit mobile."; 
+            return; 
+        }
+
+        msg.innerText = "Checking availability...";
+        regBtn.disabled = true; // Prevent double clicks
+
+        // Check 24-hour rule
+        const { data: history, error } = await supabase
+            .from('loyalty_entries')
+            .select('created_at')
+            .eq('mobile', mobile)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (error) { 
+            msg.innerText = "Connection error. Refresh and try again."; 
+            regBtn.disabled = false; return; 
+        }
+
+        if (history.length > 0) {
+            const lastPlayed = new Date(history[0].created_at);
+            const diffHours = (new Date() - lastPlayed) / 36e5; 
+            if (diffHours < 24) {
+                msg.innerText = `Try again after ${Math.ceil(24 - diffHours)} hours.`;
+                regBtn.disabled = false; return;
+            }
+        }
+
+        // Generate Discount
+        const discount = Math.floor(Math.random() * (20 - 10 + 1)) + 10;
+
+        // Save to DB
+        const { error: insertError } = await supabase
+            .from('loyalty_entries')
+            .insert([{ name: name, mobile: mobile, discount_amount: discount }]);
+
+        if (insertError) {
+            msg.innerText = "Save failed. Try again.";
+            regBtn.disabled = false;
+        } else {
+            // SUCCESS: Switch screens and initialize canvas
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('scratch-section').style.display = 'block';
+            document.getElementById('prize-amount').innerText = "₹" + discount + " OFF";
+            
+            // Initialize the scratch canvas mechanics
+            initScratchCard();
+        }
+    }
+
+    // --- NEW CANVAS SCRATCH LOGIC ---
+    function initScratchCard() {
+        const canvas = document.getElementById('scratch-canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+
+        // 1. Fill canvas with gray overlay text
+        ctx.fillStyle = '#95a5a6'; // Gray color
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Add text to the gray top layer
+        ctx.font = "bold 20px Arial";
+        ctx.fillStyle = "#ecf0f1";
+        ctx.textAlign = "center";
+        ctx.fillText("SCRATCH HERE!", canvas.width/2, canvas.height/2 + 8);
+
+        // 2. Define the erasing function (The magic part)
+        // 'destination-out' makes whatever we draw transparent, revealing what's under
+        ctx.globalCompositeOperation = 'destination-out';
+
+        function scratch(x, y) {
+             ctx.beginPath();
+             // Draw a circle where the finger/mouse is. Increase radius for bigger brush.
+             ctx.arc(x, y, 25, 0, Math.PI * 2, false); 
+             ctx.fill();
+        }
+
+        // 3. Helper to get correct coordinates on mobile or desktop
+        function getPosition(e) {
+             const rect = canvas.getBoundingClientRect();
+             let clientX, clientY;
+             
+             if(e.touches && e.touches.length > 0) {
+                 // It's a touch event
+                 clientX = e.touches[0].clientX;
+                 clientY = e.touches[0].clientY;
+             } else {
+                 // It's a mouse event
+                 clientX = e.clientX;
+                 clientY = e.clientY;
+             }
+             
+             return {
+                 x: clientX - rect.left,
+                 y: clientY - rect.top
+             };
+        }
+
+        // 4. Event Listeners for Mouse (Desktop)
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; const pos = getPosition(e); scratch(pos.x, pos.y); });
+        canvas.addEventListener('mousemove', (e) => { if (isDrawing) { const pos = getPosition(e); scratch(pos.x, pos.y); } });
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+        // 5. Event Listeners for Touch (Mobile) - IMPORTANT!
+        // We preventDefault to stop the phone screen from dragging around while scratching
+        canvas.addEventListener('touchstart', (e) => { 
+            e.preventDefault(); isDrawing = true; const pos = getPosition(e); scratch(pos.x, pos.y); 
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', (e) => { 
+            e.preventDefault(); if (isDrawing) { const pos = getPosition(e); scratch(pos.x, pos.y); } 
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', () => isDrawing = false);
+    }
+</script>
+
+</body>
+</html>
